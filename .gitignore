@@ -1,0 +1,29 @@
+# === Python cache ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# === Virtual env ===
+venv/
+env/
+
+# === Env secrets ===
+.env
+*.env
+
+# === Vector DB / Chroma ===
+chroma_store/
+*.db
+*.sqlite
+
+# === Logs ===
+*.log
+
+# === IDE ===
+.vscode/
+.idea/
+
+# === System ===
+.DS_Store
+Thumbs.db
