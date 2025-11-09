@@ -1,7 +1,31 @@
-langchain>=0.2.0
-langchain-community>=0.2.0
-openai>=1.0.0
-chromadb>=0.4.0
-PyPDF2>=3.0.0
-tiktoken>=0.5.0
-streamlit>=1.30.0
+# --- Core App Dependencies ---
+streamlit>=1.33.0
+
+# --- LangChain & OpenAI ---
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-openai>=0.3.0
+openai>=1.40.0
+
+# --- Vector Store & Embeddings ---
+chromadb>=0.5.0
+tiktoken>=0.8.0
+
+# --- Data Handling ---
+numpy>=1.26.0
+pandas>=2.2.0
+
+# --- Validation / Utilities ---
+jsonschema>=4.0.0
+python-dateutil>=2.8.0
+typing-extensions>=4.7.0
+urllib3>=2.0.0
+markupsafe>=2.1.0
+six>=1.16.0
+idna>=3.0.0
+charset-normalizer>=3.0.0
+packaging>=23.2,<25.0
+
+# --- Optional (helpful for dev/debugging) ---
+requests>=2.32.0
+gitpython>=3.1.0
