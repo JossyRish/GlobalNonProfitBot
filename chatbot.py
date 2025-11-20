@@ -1,8 +1,9 @@
 # --- chatbot.py ---
 import os
+import os
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.chains import RetrievalQA   # ✅ Correct
+from langchain.chains.retrieval_qa.base import RetrievalQA
 
 # 1️⃣ Load API key from environment variable
 openai_api_key = os.getenv("OPENAI_API_KEY")
