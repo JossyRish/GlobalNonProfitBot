@@ -1,42 +1,53 @@
 # --- chatbot.py ---
 import os
-import os
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.chains.retrieval_qa.base import RetrievalQA
+from langchain.prompts import ChatPromptTemplate
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
 
-# 1️⃣ Load API key from environment variable
+# 1️⃣ Load API key
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("❌ OPENAI_API_KEY not found. Please set it in your environment variables.")
 
-# 2️⃣ Load stored embeddings (vector database)
+# 2️⃣ Vectorstore / embeddings
 persist_directory = "chroma_store"
 embeddings = OpenAIEmbeddings()
+
 vectorstore = Chroma(
     persist_directory=persist_directory,
     embedding_function=embeddings
 )
 
-# 3️⃣ Create a retriever to fetch relevant chunks
+# 3️⃣ Retriever
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
-# 4️⃣ Initialize the GPT model
-llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.3)
+# 4️⃣ LLM
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
 
-# 5️⃣ Build the Retrieval QA chain
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=retriever,
-    return_source_documents=True
-)
+# 5️⃣ REQUIRED Prompt (fix for latest LangChain)
+prompt = ChatPromptTemplate.from_template("""
+Use the following context to answer the user question.
+
+<context>
+{context}
+</context>
+
+Question: {input}
+
+Answer as clearly as possible.
+""")
+
+# 6️⃣ Build Retrieval QA chain
+document_chain = create_stuff_documents_chain(llm, prompt)
+qa_chain = create_retrieval_chain(retriever, document_chain)
 
 def ask_bot(query: str) -> str:
-    """Run a single query through the chatbot and return the response text."""
+    """Run a query through the chatbot."""
     try:
-        result = qa_chain({"query": query})
-        return result["result"]
+        result = qa_chain.invoke({"input": query})
+        return result.get("answer", "⚠️ No answer returned.")
     except Exception as e:
         return f"⚠️ Error: {e}"
 
