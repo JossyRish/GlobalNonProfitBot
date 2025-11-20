@@ -7,6 +7,8 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
 # Load API key
+print("🔐 OPENAI_API_KEY exists:", "OPENAI_API_KEY" in os.environ)
+
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("❌ OPENAI_API_KEY not found. Please set it in your environment variables.")
