@@ -32,3 +32,7 @@ packaging>=23.2,<25.0
 # --- Optional (helpful for dev/debugging) ---
 requests>=2.32.0
 gitpython>=3.1.0
+
+# --- pypdf
+pypdf>=4.0.0
+

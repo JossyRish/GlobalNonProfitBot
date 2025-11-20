@@ -2,13 +2,16 @@
 For my non profit chatbot
 
 # Helpful Commands
-pip install -r requirements.txt
 
-python chatbot.py
+.venv\Scripts\activate
 
 streamlit run app.py
 
+python chatbot.py
+
 python ingest_data.py
+
+pip install -r requirements.txt
 
 # URLs
  https://platform.openai.com/api-keys 
