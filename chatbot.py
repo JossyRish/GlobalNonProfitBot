@@ -2,16 +2,14 @@
 import os
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
+from langchain.chains.retrieval_qa.base import RetrievalQA
 
-# 1️⃣ Load API key
+# Load API key
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
-    raise ValueError("❌ OPENAI_API_KEY not found. Please set it in your environment variables.")
+    raise ValueError("❌ OPENAI_API_KEY not found. Add it in Streamlit Secrets.")
 
-# 2️⃣ Vectorstore / embeddings
+# Initialize Chroma Vector Store
 persist_directory = "chroma_store"
 embeddings = OpenAIEmbeddings()
 
@@ -20,43 +18,23 @@ vectorstore = Chroma(
     embedding_function=embeddings
 )
 
-# 3️⃣ Retriever
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
-# 4️⃣ LLM
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+# LLM
+llm = ChatOpenAI(
+    model="gpt-3.5-turbo",
+    temperature=0.3
+)
 
-# 5️⃣ REQUIRED Prompt (fix for latest LangChain)
-prompt = ChatPromptTemplate.from_template("""
-Use the following context to answer the user question.
+# Retrieval QA Chain
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=retriever,
+    return_source_documents=True
+)
 
-<context>
-{context}
-</context>
-
-Question: {input}
-
-Answer as clearly as possible.
-""")
-
-# 6️⃣ Build Retrieval QA chain
-document_chain = create_stuff_documents_chain(llm, prompt)
-qa_chain = create_retrieval_chain(retriever, document_chain)
-
-def ask_bot(query: str) -> str:
-    """Run a query through the chatbot."""
-    try:
-        result = qa_chain.invoke({"input": query})
-        return result.get("answer", "⚠️ No answer returned.")
-    except Exception as e:
-        return f"⚠️ Error: {e}"
-
-if __name__ == "__main__":
-    print("\n💬 RKF Chatbot Ready!")
-    print("Type your question below, or 'exit' to quit.\n")
-    while True:
-        query = input("You: ")
-        if query.lower() in ["exit", "quit"]:
-            print("👋 Goodbye!")
-            break
-        print(f"🤖 Chatbot: {ask_bot(query)}\n")
+def ask_bot(query: str):
+    """Simple wrapper for Streamlit UI"""
+    result = qa_chain({"query": query})
+    return result["result"]
