@@ -1,7 +1,7 @@
 import os
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.chains import RetrievalQA
+from langchain_community.chains import RetrievalQA   # ✅ Correct
 
 # 1️⃣ Load API key from environment variable
 openai_api_key = os.getenv("OPENAI_API_KEY")
