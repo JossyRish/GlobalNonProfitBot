@@ -1,0 +1,4 @@
+touch uploads/pending/.gitkeep
+touch uploads/approved/.gitkeep
+touch uploads/rejected/.gitkeep
+touch .chroma_data/.gitkeep
