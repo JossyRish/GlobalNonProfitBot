@@ -23,27 +23,11 @@ The bot *never* shows:
     • filenames  
     • citations  
 """
-
-# ============================================================
-# IMPORTS
-# ============================================================
-
 import os
-import re
-import difflib
-import random
-from typing import List, Tuple, Optional
-
 import streamlit as st
 
-from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-# ✅ FIXED for Streamlit Cloud / new LangChain
-from langchain_core.prompts import ChatPromptTemplate
-
-
 # ============================================================
-# LOAD OPENAI API KEY SAFELY (Secrets → Env → Error)
+# 🔐 LOAD OPENAI API KEY FIRST — before ANY other imports
 # ============================================================
 
 api_key = st.secrets.get("OPENAI_API_KEY", None)
@@ -51,10 +35,22 @@ if api_key is None:
     api_key = os.getenv("OPENAI_API_KEY")
 
 if not api_key:
-    st.error("❌ OpenAI API key missing. Ask your admin to add it in Streamlit Secrets.")
+    st.error("❌ Missing OpenAI API Key. Add it in Streamlit Secrets or env.")
     st.stop()
 
 os.environ["OPENAI_API_KEY"] = api_key
+
+# ============================================================
+# AFTER KEY: Now safe to import LangChain
+# ============================================================
+
+import re
+import difflib
+from typing import List, Tuple, Optional
+import random
+from langchain_chroma import Chroma
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
 
 
 # ============================================================
