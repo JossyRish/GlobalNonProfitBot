@@ -30,12 +30,13 @@ import streamlit as st
 # 🔐 LOAD OPENAI API KEY FIRST — before ANY other imports
 # ============================================================
 
-api_key = st.secrets.get("OPENAI_API_KEY", None)
-if api_key is None:
-    api_key = os.getenv("OPENAI_API_KEY")
+# ============================================================
+# 1) Load OpenAI key BEFORE importing LangChain
+# ============================================================
 
+api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
-    st.error("❌ Missing OpenAI API Key. Add it in Streamlit Secrets or env.")
+    st.error("❌ OPENAI_API_KEY is missing. Set it in Streamlit Secrets.")
     st.stop()
 
 os.environ["OPENAI_API_KEY"] = api_key
