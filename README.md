@@ -17,3 +17,8 @@ pip install -r requirements.txt
  https://platform.openai.com/api-keys 
 
 https://share.streamlit.io/
+
+http://localhost:8501
+
+
+http://localhost:8501/AdminLogin
