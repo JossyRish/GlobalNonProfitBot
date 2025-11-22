@@ -84,15 +84,19 @@ st.set_page_config(page_title="STL For STL Kid Chatbot", page_icon="🤖")
 # LOAD EMBEDDINGS + CHROMA
 # ============================================================
 
-embeddings = OpenAIEmbeddings(model=EMBED_MODEL)
-
-try:
-    vectordb = Chroma(
+@st.cache_resource
+def get_vectordb():
+    embeddings = OpenAIEmbeddings(model=EMBED_MODEL)
+    return Chroma(
         persist_directory=PERSIST_DIR,
         embedding_function=embeddings
     )
+
+try:
+    vectordb = get_vectordb()
 except Exception:
     vectordb = None
+
 
 llm = ChatOpenAI(model=CHAT_MODEL, temperature=0.15)
 
