@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import shutil
 import time
+import random
 
 from backend.ingest_file import ingest_file
 
@@ -24,11 +25,84 @@ PENDING_DIR = "uploads/pending"
 APPROVED_DIR = "uploads/approved"
 REJECTED_DIR = "uploads/rejected"
 CHROMA_DIR = "uploads/.chroma_data"
+UPLOADS_DIR = "uploads"
 
 os.makedirs(PENDING_DIR, exist_ok=True)
 os.makedirs(APPROVED_DIR, exist_ok=True)
 os.makedirs(REJECTED_DIR, exist_ok=True)
 os.makedirs(CHROMA_DIR, exist_ok=True)
+
+# APPROVE STATE (store filename only)
+if "approve_file" not in st.session_state:
+    st.session_state.approve_file = None
+
+# FAST UPLOAD flicker guard
+if "fast_done" not in st.session_state:
+    st.session_state.fast_done = False
+
+
+# ----------------------------------------------------------
+# 🔥 FUN TEEN-SWAG INGEST WRAPPER (Gen-Z vibe)
+# ----------------------------------------------------------
+def run_ingest_with_fun(pdf_path: str, *, move_to_approved: bool = True, label_name: str = ""):
+    """
+    Runs ingest_file with:
+      ✅ Gen-Z teen swag animated progress
+      ✅ Live status chatter
+      ✅ Random emojis
+      ✅ Toasts + Balloons on success
+    Cloud-safe: animation first, then real ingest.
+    """
+    emoji_pool = ["🤖", "🔥", "✨", "😎", "🚀", "🧠", "📚", "⚡", "🎮", "💅", "🥳", "🫶"]
+    def hype(msg):  # sprinkle random emoji
+        return f"{random.choice(emoji_pool)} {msg} {random.choice(emoji_pool)}"
+
+    hype_lines = [
+        hype("Yo this PDF thick 😅 lemme slice it up real quick…"),
+        hype("Scanning pages like a pro…"),
+        hype("Breaking text into smart chunks…"),
+        hype("Feeding my brain fresh knowledge…"),
+        hype("Slaying these embeddings, queen 💅"),
+        hype("Saving to my memory vault…"),
+        hype("Almost done leveling up…"),
+    ]
+
+    # little live “chat” feel
+    chatter_box = st.empty()
+    progress = st.progress(0, hype_lines[0])
+
+    # warmup animation (keeps it fun)
+    for i, msg in enumerate(hype_lines):
+        chatter_box.markdown(
+            f"**{msg}**",
+            unsafe_allow_html=True
+        )
+        progress.progress((i + 1) / len(hype_lines), msg)
+        time.sleep(0.55)
+
+    # real ingest
+    chatter_box.markdown("**🧠 Now doing the REAL training… don’t blink 😤**")
+    result = ingest_file(pdf_path, move_to_approved=move_to_approved)
+
+    progress.empty()
+    chatter_box.empty()
+
+    # outcome UI
+    if result["status"] == "duplicate":
+        st.warning(result["message"])
+        st.toast("😅 Already learned this one. Great minds think alike!", icon="📄")
+
+    elif result["status"] == "error":
+        st.error(result["message"])
+        st.toast("💥 Oops. That one didn’t go through.", icon="⚠️")
+
+    else:
+        st.success(f"{result['message']} 💡 I’m smarter now FR FR 🤓🔥")
+        st.toast("🎉 Training complete! Level up unlocked.", icon="🚀")
+        st.balloons()
+
+    return result
+
 
 # ----------------------------------------------------------
 # HEADER
@@ -44,9 +118,8 @@ st.markdown("""
 st.markdown("## 🚀 Fast Upload (Instant Training)")
 st.caption("Admins upload here — file is immediately trained and placed into APPROVED 😎📚")
 
-if st.session_state.get("fast_done"):
-    # Skip uploader on the rerun to prevent flicker
-    st.session_state["fast_done"] = False
+if st.session_state.fast_done:
+    st.session_state.fast_done = False
     fast_file = None
 else:
     fast_file = st.file_uploader(
@@ -56,30 +129,17 @@ else:
     )
 
 if fast_file:
-    # Save directly to APPROVED (NOT pending)
     approved_path = os.path.join(APPROVED_DIR, fast_file.name)
     with open(approved_path, "wb") as f:
         f.write(fast_file.read())
 
-    status = st.info("🤖 Training on this document… hang tight!")
+    run_ingest_with_fun(
+        approved_path,
+        move_to_approved=False,
+        label_name=fast_file.name
+    )
 
-    # Ingest from approved location
-    result = ingest_file(approved_path, move_to_approved=False)
-
-    status.empty()
-
-    # Show output
-    if result["status"] == "duplicate":
-        st.warning(result["message"])
-    elif result["status"] == "error":
-        st.error(result["message"])
-    else:
-        st.success(f"{result['message']} 💡 Ready to chat about this document!")
-        st.balloons()
-
-    # Set flicker guard
-    st.session_state["fast_done"] = True
-
+    st.session_state.fast_done = True
     st.rerun()
 
 # ----------------------------------------------------------
@@ -94,36 +154,41 @@ if not pending_files:
     st.info("✨ No pending uploads. All clear!")
 else:
     for f in pending_files:
-        full_path = os.path.join(PENDING_DIR, f)
         st.markdown(f"### 📄 {f}")
 
         col1, col2 = st.columns([1, 1])
 
-        # APPROVE & INGEST
+        # APPROVE BUTTON — triggers session state
         with col1:
-            if st.button(f"✔ Approve & Train", key=f"approve_{f}"):
-                status = st.info(f"🤖 Training on **{f}**…")
-
-                result = ingest_file(full_path)
-
-                status.empty()
-
-                if result["status"] == "duplicate":
-                    st.warning(result["message"])
-                elif result["status"] == "error":
-                    st.error(result["message"])
-                else:
-                    st.success(f"{result['message']} 💡 Ready to chat about this document!")
-                    st.balloons()
-
+            if st.button("✔ Approve & Train", key=f"approve_{f}"):
+                st.session_state.approve_file = f
                 st.rerun()
 
-        # REJECT
+        # REJECT BUTTON
         with col2:
-            if st.button(f"❌ Reject", key=f"reject_{f}"):
-                shutil.move(full_path, os.path.join(REJECTED_DIR, f))
+            if st.button("❌ Reject", key=f"reject_{f}"):
+                shutil.move(
+                    os.path.join(PENDING_DIR, f),
+                    os.path.join(REJECTED_DIR, f)
+                )
                 st.warning(f"🚫 Rejected **{f}**")
+                st.toast("Yeeted to Rejected 🗑️", icon="😈")
                 st.rerun()
+
+        # ------------------------------------------------------
+        # APPROVE PROCESS (runs after rerun)
+        # ------------------------------------------------------
+        if st.session_state.approve_file == f:
+            full_path = os.path.join(PENDING_DIR, f)
+
+            run_ingest_with_fun(
+                full_path,
+                move_to_approved=True,
+                label_name=f
+            )
+
+            st.session_state.approve_file = None
+            st.rerun()
 
 # ----------------------------------------------------------
 # LOGOUT
@@ -135,14 +200,14 @@ if st.button("🚪 Logout"):
     st.rerun()
 
 # ----------------------------------------------------------
-# 💣 SELF-DESTRUCT (WINDOWS SAFE)
+# 💣 SELF-DESTRUCT (WINDOWS + CLOUD SAFE)
 # ----------------------------------------------------------
 st.markdown("---")
 st.markdown("""
 <div style='padding: 15px; border: 2px solid #b30000; border-radius: 8px; background-color:#33000033;'>
 <h2 style='color:#ff4d4d;'>💣 Danger Zone – Total System Reset</h2>
 <p>This wipes ALL PDFs and ALL trained Chroma data.<br>
-Fully Windows-safe. No errors. Always resets cleanly 😅</p>
+Fully Windows-safe. Cloud-safe. Always resets cleanly 😅</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -167,27 +232,49 @@ if st.session_state.get("self_destruct"):
         for folder in [PENDING_DIR, APPROVED_DIR, REJECTED_DIR]:
             for fn in os.listdir(folder):
                 if fn != ".gitkeep":
-                    os.remove(os.path.join(folder, fn))
+                    try:
+                        os.remove(os.path.join(folder, fn))
+                    except:
+                        pass
 
-        # Windows-safe Chroma reset
+        # -------------------------------
+        # 💾 Chroma DB reset (HARD SAFE)
+        # -------------------------------
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        trash_path = f"{CHROMA_DIR}_LOCKED_{timestamp}"
+
         if os.path.exists(CHROMA_DIR):
             try:
                 shutil.rmtree(CHROMA_DIR)
             except Exception:
-                # If locked, move its CONTENTS aside instead of renaming directory
-                timestamp = time.strftime("%Y%m%d_%H%M%S")
-                trash_path = f"{CHROMA_DIR}_LOCKED_{timestamp}"
-                os.makedirs(trash_path, exist_ok=True)
-                st.warning(
-                    f"⚠️ Chroma DB was locked.\n"
-                    f"Moved unlocked files to:\n`{trash_path}`\n"
-                    "Fresh DB created."
-                )
+                try:
+                    os.rename(CHROMA_DIR, trash_path)
+                    st.warning(
+                        f"⚠️ Chroma was locked.\nMoved DB to:\n`{trash_path}`\nFresh DB created."
+                    )
+                except Exception:
+                    for root, dirs, files in os.walk(CHROMA_DIR, topdown=False):
+                        for name in files:
+                            try:
+                                os.remove(os.path.join(root, name))
+                            except:
+                                pass
+                        for name in dirs:
+                            try:
+                                os.rmdir(os.path.join(root, name))
+                            except:
+                                pass
 
-        # Recreate fresh Chroma folder
+        # Recreate clean Chroma DB folder
         os.makedirs(CHROMA_DIR, exist_ok=True)
 
+        # Clean up leftover Chroma LOCKED folders
+        for fn in os.listdir(UPLOADS_DIR):
+            if fn.startswith(".chroma_data_LOCKED_"):
+                shutil.rmtree(os.path.join(UPLOADS_DIR, fn), ignore_errors=True)
+
         st.success("🧹 BOOM! System fully reset. Fresh & clean! 🎉")
+        st.toast("Everything reset. New game started 🎮", icon="✨")
         st.balloons()
         st.session_state["self_destruct"] = False
 

@@ -1,3 +1,15 @@
+"""
+backend/ingest_file.py
+======================
+
+✅ Cloud-safe, Windows-safe ingestion with NO UI debug spam.
+Fixes:
+  • Approve blink/no-move bug (safe empty-DB duplicate check)
+  • Uses public Chroma persist() (no private _client call)
+  • Creates required folders on first run
+  • Keeps your original behavior + signature intact
+"""
+
 import os
 import shutil
 import hashlib
@@ -8,13 +20,19 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
+
 # ==========================================================
-#  INGEST FILE MODULE — FINAL FIXED VERSION
+# DIRECTORIES
 # ==========================================================
 
 PENDING_DIR = "uploads/pending"
 APPROVED_DIR = "uploads/approved"
 PERSIST_DIR = "uploads/.chroma_data"
+
+os.makedirs(PENDING_DIR, exist_ok=True)
+os.makedirs(APPROVED_DIR, exist_ok=True)
+os.makedirs(PERSIST_DIR, exist_ok=True)
+
 
 # -----------------------------------------------------------
 # SHA-256 HASH FOR DUP DETECTION
@@ -22,8 +40,11 @@ PERSIST_DIR = "uploads/.chroma_data"
 def compute_hash(filepath: str) -> str:
     sha = hashlib.sha256()
     with open(filepath, "rb") as f:
-        sha.update(f.read())
+        # read in chunks to avoid memory spikes on large PDFs
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            sha.update(chunk)
     return sha.hexdigest()
+
 
 # -----------------------------------------------------------
 # INGEST FILE
@@ -46,7 +67,7 @@ def ingest_file(pdf_path: str, move_to_approved: bool = True):
             filename: "stored_filename.pdf"
         }
 
-    BEHAVIOR FIX:
+    BEHAVIOR:
       🔥 Admin Fast Upload passes move_to_approved=False
          → file is already correctly in APPROVED folder
       🔥 Public uploads use default = True → safely moved from PENDING → APPROVED
@@ -69,7 +90,7 @@ def ingest_file(pdf_path: str, move_to_approved: bool = True):
             "filename": None
         }
 
-    # 2) Hash check
+    # 2) Hash check (dup detection)
     file_hash = compute_hash(pdf_path)
 
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
@@ -78,9 +99,20 @@ def ingest_file(pdf_path: str, move_to_approved: bool = True):
         embedding_function=embeddings
     )
 
-    existing = vectorstore.get(include=["metadatas"])
-    for meta in existing.get("metadatas", []):
-        if meta.get("hash") == file_hash:
+    # ✅ SAFE duplicate check even when DB is empty or initializing on Cloud
+    try:
+        existing = vectorstore.get(include=["metadatas"])
+        metadatas = existing.get("metadatas", []) if existing else []
+        if not isinstance(metadatas, list):
+            metadatas = []
+    except Exception as e:
+        # console-only visibility; no Streamlit UI spam
+        print(f"[ingest_file] Duplicate check skipped (empty/locked DB): {e}")
+        metadatas = []
+
+    for meta in metadatas:
+        # meta can sometimes be None or empty dict
+        if isinstance(meta, dict) and meta.get("hash") == file_hash:
             return {
                 "status": "duplicate",
                 "message": "⚠️ This PDF was already ingested.",
@@ -98,7 +130,7 @@ def ingest_file(pdf_path: str, move_to_approved: bool = True):
         approved_path = os.path.join(APPROVED_DIR, new_name)
         shutil.move(pdf_path, approved_path)
     else:
-        # This is admin fast upload → ALREADY in APPROVED
+        # This is admin fast upload → already in APPROVED
         approved_path = pdf_path
         new_name = original_name
 
@@ -121,10 +153,11 @@ def ingest_file(pdf_path: str, move_to_approved: bool = True):
     # 6) Store in Chroma
     vectorstore.add_documents(docs)
 
+    # ✅ Public persist call (cloud-safe)
     try:
-        vectorstore._client.persist()
-    except Exception:
-        pass
+        vectorstore.persist()
+    except Exception as e:
+        print(f"[ingest_file] Persist skipped (cloud lock ok): {e}")
 
     # 7) Return clean output
     return {

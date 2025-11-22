@@ -13,15 +13,6 @@ This chatbot:
     • If it can’t answer, it tells the kid *exactly* why and what to do  
     • Fun kid/teen vibe 😎
 
-Kids can ask:
-    • “What classes are there?”  
-    • “What is FIN 8610?”  
-    • “What does this document say about safety rules?”  
-    • “Summarize the code of conduct PDF”  
-    • “How does the hybrid format work?”  
-    • “Do you know anything about dinosaurs?” → and the bot says:
-        “I don’t — but upload a dino PDF and I’ll learn it in seconds!” 🦖🤓
-
 The bot auto-detects:
     • course codes  
     • module/week numbers  
@@ -40,24 +31,30 @@ The bot *never* shows:
 import os
 import re
 import difflib
+import random
 from typing import List, Tuple, Optional
 
 import streamlit as st
 
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+# ✅ FIXED for Streamlit Cloud / new LangChain
+from langchain_core.prompts import ChatPromptTemplate
+
 
 # ============================================================
-# LOAD OPENAI API KEY SAFELY
+# LOAD OPENAI API KEY SAFELY (Secrets → Env → Error)
 # ============================================================
 
-if "OPENAI_API_KEY" not in st.secrets:
+api_key = st.secrets.get("OPENAI_API_KEY", None)
+if api_key is None:
+    api_key = os.getenv("OPENAI_API_KEY")
+
+if not api_key:
     st.error("❌ OpenAI API key missing. Ask your admin to add it in Streamlit Secrets.")
     st.stop()
 
-import os
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+os.environ["OPENAI_API_KEY"] = api_key
 
 
 # ============================================================
@@ -69,8 +66,11 @@ APPROVED_DIR = "uploads/approved"
 
 EMBED_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini"
-
 DEFAULT_K = 8
+
+# ✅ Cloud-safe: make sure folders exist
+os.makedirs(PERSIST_DIR, exist_ok=True)
+os.makedirs(APPROVED_DIR, exist_ok=True)
 
 
 # ============================================================
@@ -78,29 +78,6 @@ DEFAULT_K = 8
 # ============================================================
 
 st.set_page_config(page_title="STL For STL Kid Chatbot", page_icon="🤖")
-
-# Clean, attractive header
-st.markdown("""
-# 🤖🔥 STL For STL Chatbot — Kid Edition 🎉  
-Hi friend! I'm your **Super Smart PDF Learning Bot** 📚✨  
-I can learn ANYTHING you upload — school papers, instructions, stories,  
-science topics, class lists, ANYTHING!  
-
-Ask me stuff like:
-
-• “List all finance electives”  
-• “What is FIN 8610?”  
-• “Compare FIN 8610 and FIN 852”  
-• “How does hybrid school work?”  
-• “What are the program requirements?”  
-• “Summarize this policy”  
-• “What does this document say about dinosaurs?” 🦖  
-
-If I don’t know something, I’ll tell you AND show you how to teach me by uploading a PDF!  
-Let’s gooo 🚀🔥
-""")
-
-st.markdown("---")
 
 
 # ============================================================
@@ -117,7 +94,6 @@ try:
 except Exception:
     vectordb = None
 
-
 llm = ChatOpenAI(model=CHAT_MODEL, temperature=0.15)
 
 
@@ -128,8 +104,11 @@ llm = ChatOpenAI(model=CHAT_MODEL, temperature=0.15)
 def get_all_chunks() -> List[str]:
     if vectordb is None:
         return []
-    payload = vectordb.get(include=["documents"])
-    return payload.get("documents", [])
+    try:
+        payload = vectordb.get(include=["documents"])
+        return payload.get("documents", []) if payload else []
+    except Exception:
+        return []
 
 
 ALL_CHUNKS = get_all_chunks()
@@ -181,6 +160,64 @@ def build_alias_map(prefixes: set) -> dict:
 
 
 ALIAS_MAP = build_alias_map(PREFIXES)
+
+
+# ============================================================
+# DYNAMIC HEADER (ONLY SHOW REAL EXAMPLES)
+# ============================================================
+
+def build_dynamic_examples() -> str:
+    course_like = [x for x in IDENTIFIERS if any(ch.isdigit() for ch in x)]
+    module_like = [x for x in IDENTIFIERS if any(k in x.lower() for k in ["module", "unit", "week", "section", "chapter", "lesson"])]
+
+    lines = []
+
+    if course_like:
+        picks = random.sample(course_like, min(2, len(course_like)))
+        for p in picks:
+            lines.append(f"• “What is {p}?”")
+        if len(course_like) >= 2:
+            a, b = random.sample(course_like, 2)
+            lines.append(f"• “Compare {a} and {b}”")
+
+    if module_like:
+        p = random.choice(module_like)
+        lines.append(f"• “Summarize {p} for me”")
+
+    # Always-safe general examples
+    lines += [
+        "• “Summarize this PDF”",
+        "• “What rules or requirements are in here?”",
+        "• “What’s the hybrid/online format like?”",
+    ]
+
+    # De-dupe while preserving order
+    seen = set()
+    clean = []
+    for l in lines:
+        if l not in seen:
+            clean.append(l)
+            seen.add(l)
+
+    return "\n".join(clean[:7])
+
+
+examples_block = build_dynamic_examples()
+
+st.markdown(f"""
+# 🤖🔥 STL For STL Chatbot — Kid & Teen Edition 🎉  
+Hi friend! I’m your **Super Smart PDF Learning Bot** 📚✨  
+I can learn anything you upload — class lists, rules, stories, science topics, ANYTHING!  
+
+Ask me stuff like:
+
+{examples_block}
+
+If I don’t know something, I’ll tell you AND show you how to teach me by uploading a PDF!  
+Let’s gooo 🚀🔥
+""")
+
+st.markdown("---")
 
 
 # ============================================================
@@ -254,7 +291,7 @@ def detect_question_category(q: str) -> str:
     if any(x in ql for x in ["hybrid", "online", "in person", "remote"]):
         return "hybrid_format"
 
-    if any(x in ql for x in ["schedule", "timeline", "duration", "weeks", "long"]):
+    if any(x in ql for x in ["schedule", "calendar", "timeline", "duration", "weeks", "long"]):
         return "schedule_info"
 
     if any(x in ql for x in ["program", "degree", "overview"]):
@@ -480,17 +517,27 @@ def answer_question(question: str) -> str:
 
 
 # ============================================================
-# STREAMLIT INPUT UI
+# STREAMLIT INPUT UI (MORE ALIVE + FUN)
 # ============================================================
 
 st.markdown("### 💬 Ask me anything you want:")
 
-# Force separation so input box is never swallowed by HTML
-st.markdown("")
+alive_placeholders = [
+    "Whatcha wanna know? 😄",
+    "Ask me something from the PDF! 📚✨",
+    "Type a question… I’m listening 👂🤖",
+    "Let’s explore together! 🚀",
+    "Got a course code? Throw it here 😎",
+    "Ask about rules, schedules, or anything inside 🔎",
+    "Teach me something cool by uploading a PDF! 🦖📄",
+]
+
+placeholder_text = random.choice(alive_placeholders)
 
 user_q = st.text_input(
     "",
-    placeholder="Try: What does this document say about hybrid classes?"
+    placeholder=placeholder_text,
+    key="kid_input"
 )
 
 if user_q:
@@ -501,5 +548,7 @@ if user_q:
     st.subheader("📘 Your Answer:")
     st.info(answer)
 
-    if "learn" not in answer.lower():
+    # 🎈 Balloons ONLY if we found a real answer
+    ans_lower = answer.lower() if answer else ""
+    if answer and ("couldn't find" not in ans_lower) and ("haven’t learned" not in ans_lower) and ("upload a pdf" not in ans_lower):
         st.balloons()
