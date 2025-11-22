@@ -1,37 +1,23 @@
 # --- Core App Dependencies ---
-streamlit>=1.33.0
+streamlit==1.39.0
 
-# --- LangChain (stable & compatible) ---
-langchain==0.2.14
-langchain-community==0.2.10
-langchain-openai==0.1.19
-langchain-chroma==0.1.2
+# --- LangChain (Streamlit-Cloud safe set) ---
+langchain==0.3.0
+langchain-community==0.3.0
+langchain-openai==0.2.2
+langchain-chroma==0.1.4
 
 # --- OpenAI ---
-openai>=1.40.0
+openai==1.40.0
 
-# --- Vector Store & Embeddings ---
-chromadb==0.5.5
-tiktoken==0.7.0
-
-# --- Data Handling ---
-numpy>=1.26.0
-pandas>=2.2.0
-
-# --- Validation / Utilities ---
-jsonschema>=4.0.0
-python-dateutil>=2.8.0
-typing-extensions>=4.7.0
-urllib3>=2.0.0
-markupsafe>=2.1.0
-six>=1.16.0
-idna>=3.0.0
-charset-normalizer>=3.0.0
-packaging>=23.2,<25.0
-
-# --- Optional (Dev Tools) ---
-requests>=2.32.0
-gitpython>=3.1.0
+# --- Vector Store ---
+chromadb==0.4.24
 
 # --- PDF Parsing ---
-pypdf>=4.0.0
+pypdf==4.2.0
+
+# --- Local env helper (safe on cloud too) ---
+python-dotenv==1.0.1
+
+# --- Small utility (optional but safe) ---
+tqdm
