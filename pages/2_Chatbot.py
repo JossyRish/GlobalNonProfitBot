@@ -14,6 +14,13 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.prompts import ChatPromptTemplate
 
 # ============================================================
+# FIX STREAMLIT PROXY INJECTION ISSUE (IMPORTANT)
+# ============================================================
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+os.environ.pop("ALL_PROXY", None)
+
+# ============================================================
 # STREAMLIT PAGE CONFIG
 # ============================================================
 st.set_page_config(

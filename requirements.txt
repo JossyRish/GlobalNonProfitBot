@@ -19,5 +19,8 @@ pypdf==4.2.0
 # --- Local env helper (safe on cloud too) ---
 python-dotenv==1.0.1
 
+# --- HTTPX pin to fix OpenAI proxies crash ---
+httpx==0.27.2
+
 # --- Small utility (optional but safe) ---
 tqdm
