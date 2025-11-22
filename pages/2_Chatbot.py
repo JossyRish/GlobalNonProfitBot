@@ -1,60 +1,34 @@
-"""
-2_chatbot.py
-============
+# ============================================================
+# 2_Chatbot.py — STL KID-FRIENDLY SMART CHATBOT
+# Clean, updated, Streamlit-Cloud-safe version (Nov 2025)
+# ============================================================
 
-🔥 STL FOR STL KID-FRIENDLY CHATBOT — SMART HYBRID + AUTO-LEARNING 🎉🤖  
----------------------------------------------------------------------
-
-This chatbot:
-    • Learns instantly from PDFs you upload  
-    • Answers questions about electives, schedules, programs, or ANY doc  
-    • Detects question type (course? hybrid? program? random doc?)  
-    • NEVER hallucinates — only answers from the text it was trained on  
-    • If it can’t answer, it tells the kid *exactly* why and what to do  
-    • Fun kid/teen vibe 😎
-
-The bot auto-detects:
-    • course codes  
-    • module/week numbers  
-    • subject areas (FIN, MKT, etc. if present)  
-
-The bot never shows:
-    • sources  
-    • filenames  
-    • citations  
-"""
 import os
-import streamlit as st
-
-# ============================================================
-# 🔐 LOAD OPENAI API KEY FIRST — before ANY other imports
-# ============================================================
-
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    st.error("❌ OPENAI_API_KEY is missing. Set it in Streamlit Secrets.")
-    st.stop()
-
-os.environ["OPENAI_API_KEY"] = api_key
-
-# ============================================================
-# AFTER KEY: Now safe to import LangChain
-# ============================================================
-
 import re
 import difflib
-from typing import List, Tuple, Optional
-import random
+from typing import List, Optional
 
+import streamlit as st
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.prompts import ChatPromptTemplate
 
+# ============================================================
+# STREAMLIT PAGE CONFIG
+# ============================================================
+st.set_page_config(
+    page_title="STL Student Helper 🤖",
+    page_icon="🤖",
+    layout="wide"
+)
+
+st.title("🎒 STL School Helper Chatbot")
+st.caption("Fun • Friendly • Super Smart • Never Hallucinates 😎")
+
 
 # ============================================================
-# CONFIG
+# CONSTANTS / DIRECTORIES
 # ============================================================
-
 PERSIST_DIR = "uploads/.chroma_data"
 APPROVED_DIR = "uploads/approved"
 
@@ -62,438 +36,165 @@ EMBED_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini"
 DEFAULT_K = 8
 
-# Ensure folders exist in cloud
-os.makedirs(PERSIST_DIR, exist_ok=True)
-os.makedirs(APPROVED_DIR, exist_ok=True)
 
 # ============================================================
-# STREAMLIT PAGE SETUP
+# LOAD API KEY — FIXED FOR STREAMLIT CLOUD
 # ============================================================
+api_key = (
+    st.secrets.get("OPENAI_API_KEY")
+    or os.getenv("OPENAI_API_KEY")
+)
 
-st.set_page_config(page_title="STL For STL Kid Chatbot", page_icon="🤖")
+if not api_key:
+    st.error("❌ Missing OpenAI API Key. Add it in Streamlit Secrets.")
+    st.stop()
 
-# ============================================================
-# LOAD EMBEDDINGS + CHROMA
-# ============================================================
-
-@st.cache_resource
-def get_vectordb():
-    embeddings = OpenAIEmbeddings(model=EMBED_MODEL)
-    return Chroma(
-        persist_directory=PERSIST_DIR,
-        embedding_function=embeddings
-    )
-
-try:
-    vectordb = get_vectordb()
-except Exception:
-    vectordb = None
 
 # ============================================================
-# FIXED: ChatOpenAI MUST receive API key explicitly on Streamlit Cloud
+# INIT OPENAI LLM — NEW LANGCHAIN 0.3.x SYNTAX
 # ============================================================
-
 llm = ChatOpenAI(
     model=CHAT_MODEL,
     temperature=0.15,
-    openai_api_key=os.environ["OPENAI_API_KEY"]
+    api_key=api_key,   # ✔ correct parameter for new client
 )
 
+
 # ============================================================
-# AUTO-LEARNING HELPERS
+# INITIALIZE VECTORSTORE (CHROMA)
 # ============================================================
+def load_vectorstore():
+    """Load Chroma vector DB from approved uploads."""
+    if not os.path.exists(APPROVED_DIR):
+        os.makedirs(APPROVED_DIR)
 
-def get_all_chunks() -> List[str]:
-    if vectordb is None:
-        return []
-    try:
-        payload = vectordb.get(include=["documents"])
-        return payload.get("documents", []) if payload else []
-    except Exception:
-        return []
-
-ALL_CHUNKS = get_all_chunks()
-
-
-def auto_detect_identifiers(chunks: List[str]) -> Tuple[set, set]:
-    identifiers = set()
-    prefixes = set()
-
-    code_pattern = re.compile(r"\b([A-Z]{2,5})\s?-?\s?(\d{3,4}[A-Z]?)\b")
-    section_pattern = re.compile(
-        r"\b(Module|Unit|Week|Section|Chapter|Lesson)\s+([A-Z0-9]{1,3})\b",
-        re.IGNORECASE
+    embeddings = OpenAIEmbeddings(
+        model=EMBED_MODEL,
+        api_key=api_key
     )
 
-    for text in chunks:
-        for m in code_pattern.findall(text.upper()):
-            prefix, num = m
-            if prefix.isalpha() and len(prefix) <= 5:
-                prefixes.add(prefix)
-                identifiers.add(f"{prefix} {num}")
-
-        for m in section_pattern.findall(text):
-            label, val = m
-            identifiers.add(f"{label.title()} {val}")
-
-    return identifiers, prefixes
+    vectordb = Chroma(
+        collection_name="school_docs",
+        persist_directory=PERSIST_DIR,
+        embedding_function=embeddings
+    )
+    return vectordb
 
 
-IDENTIFIERS, PREFIXES = auto_detect_identifiers(ALL_CHUNKS)
+vectorstore = load_vectorstore()
 
-
-def build_alias_map(prefixes: set) -> dict:
-    alias_map = {}
-    possible = {
-        "finance": "FIN",
-        "marketing": "MKT",
-        "accounting": "ACCT",
-        "operations": "OPM",
-        "analytics": "MEC",
-        "strategy": "STR",
-        "management": "MGT",
-    }
-    for word, pref in possible.items():
-        if pref in prefixes:
-            alias_map[word] = pref
-    return alias_map
-
-
-ALIAS_MAP = build_alias_map(PREFIXES)
 
 # ============================================================
-# DYNAMIC EXAMPLES
+# RETRIEVE RELEVANT CHUNKS (NO HALLUCINATING)
 # ============================================================
+def get_relevant_chunks(query: str, k: int = DEFAULT_K):
+    try:
+        return vectorstore.similarity_search(query, k=k)
+    except Exception as e:
+        st.error(f"Vector DB error: {e}")
+        return []
 
-def build_dynamic_examples() -> str:
-    course_like = [x for x in IDENTIFIERS if any(ch.isdigit() for ch in x)]
-    module_like = [x for x in IDENTIFIERS if any(k in x.lower() for k in ["module", "unit", "week", "section", "chapter", "lesson"])]
 
-    lines = []
+# ============================================================
+# CREATE SMART, KID-FRIENDLY PROMPT
+# ============================================================
+prompt_template = ChatPromptTemplate.from_template("""
 
-    if course_like:
-        picks = random.sample(course_like, min(2, len(course_like)))
-        for p in picks:
-            lines.append(f"• “What is {p}?”")
-        if len(course_like) >= 2:
-            a, b = random.sample(course_like, 2)
-            lines.append(f"• “Compare {a} and {b}”")
+You are a friendly STL school helper chatbot. 😎  
+You ONLY answer using information found in the chunks below.  
+If the answer is not found, say:
 
-    if module_like:
-        p = random.choice(module_like)
-        lines.append(f"• “Summarize {p} for me”")
+"I'm not trained on that yet! Try uploading the document first 💡"
 
-    lines += [
-        "• “Summarize this PDF”",
-        "• “What rules or requirements are in here?”",
-        "• “What’s the hybrid/online format like?”",
-    ]
+Rules:
+- Keep answers simple.
+- No citations.
+- No file names.
+- No guessing.
+- No hallucinating.
+- Give clear explanations.
 
-    seen = set()
-    clean = []
-    for l in lines:
-        if l not in seen:
-            clean.append(l)
-            seen.add(l)
+USER QUESTION:
+{question}
 
-    return "\n".join(clean[:7])
+DOCUMENT CHUNKS:
+{context}
 
-examples_block = build_dynamic_examples()
-
-st.markdown(f"""
-# 🤖🔥 STL For STL Chatbot — Kid & Teen Edition 🎉  
-Hi friend! I’m your **Super Smart PDF Learning Bot** 📚✨  
-Ask me questions like:
-
-{examples_block}
-
-If I don’t know, I’ll tell you nicely — and show you how to TEACH me by uploading a PDF! 🚀  
 """)
 
-st.markdown("---")
-
 # ============================================================
-# RETRIEVAL HELPERS
+# GENERATE ANSWER
 # ============================================================
+def answer_question(question: str):
+    docs = get_relevant_chunks(question)
+    if not docs:
+        return "I couldn’t find anything related to that yet. Try uploading the document! 📄✨"
 
-def smart_retrieve(query: str, k=DEFAULT_K):
-    if vectordb is None:
-        return []
-    try:
-        return vectordb.similarity_search(query, k=k)
-    except Exception:
-        return []
-
-def is_trained() -> bool:
-    try:
-        files = [f for f in os.listdir(APPROVED_DIR) if f != ".gitkeep"]
-        return len(files) > 0
-    except Exception:
-        return False
-
-def closest_matches(code: str) -> List[str]:
-    all_ids = sorted(list(IDENTIFIERS))
-    return difflib.get_close_matches(code.upper(), all_ids, n=5, cutoff=0.35)
-
-# ============================================================
-# INTENT DETECTION
-# ============================================================
-
-def extract_two_ids_for_compare(q: str) -> List[str]:
-    found = []
-
-    for ident in IDENTIFIERS:
-        if ident in q.upper():
-            found.append(ident)
-
-    code_pattern = re.compile(r"\b([A-Z]{2,5})\s?(\d{3,4}[A-Z]?)\b")
-    for m in code_pattern.findall(q.upper()):
-        found.append(f"{m[0]} {m[1]}")
-
-    seen = set()
-    uniq = []
-    for x in found:
-        if x not in seen:
-            uniq.append(x)
-            seen.add(x)
-
-    return uniq[:2]
-
-
-def detect_category_request(q: str):
-    ql = q.lower()
-    for word, pref in ALIAS_MAP.items():
-        if word in ql and any(x in ql for x in ["list", "show", "electives", "courses"]):
-            return word, pref
-    return None, None
-
-
-def detect_question_category(q: str) -> str:
-    ql = q.lower()
-
-    if "compare" in ql:
-        return "course_compare"
-    if "elective" in ql or "list courses" in ql or "list all" in ql:
-        return "elective_list"
-    if any(x in ql for x in ["hybrid", "online", "in person", "remote"]):
-        return "hybrid_format"
-    if any(x in ql for x in ["schedule", "calendar", "timeline", "duration", "weeks"]):
-        return "schedule_info"
-    if any(x in ql for x in ["program", "degree", "overview"]):
-        return "program_info"
-    if any(x in ql for x in ["admission", "apply", "deadline"]):
-        return "admissions"
-    if any(x in ql for x in ["tuition", "cost", "fees", "scholarship"]):
-        return "tuition"
-    if any(x in ql for x in ["requirement", "prereq", "credits"]):
-        return "requirements"
-
-    for ident in IDENTIFIERS:
-        if ident in q.upper():
-            return "course_detail"
-
-    return "general"
-
-# ============================================================
-# PROMPT ENGINE
-# ============================================================
-
-def answer_with_context(question: str, docs, style_hint="") -> str:
     context = "\n\n".join([d.page_content for d in docs])
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are a friendly teen PDF bot 🤖✨. "
-         "Answer ONLY using the context. If the info is not in the context, say so politely."),
-        ("user",
-         "Context:\n{context}\n\nQuestion:\n{question}\n\n{style_hint}")
-    ])
-
-    msgs = prompt.format_messages(
-        context=context,
+    # Build the final prompt
+    final_prompt = prompt_template.format_messages(
         question=question,
-        style_hint=style_hint
+        context=context
     )
 
-    response = llm.invoke(msgs)
+    # Ask LLM
+    response = llm.invoke(final_prompt)
     return response.content.strip()
 
 
-def fallback_no_results(question: str) -> str:
-    if not is_trained():
-        return (
-            "🤖 I haven’t learned anything yet! 📚\n\n"
-            "Upload a PDF and I’ll learn it instantly! 🚀"
-        )
-
-    return (
-        f"🤖 I checked everything but couldn't find anything about:\n\n"
-        f"“{question}”\n\n"
-        "Upload a PDF with that topic and I’ll learn it! 📚✨"
+# ============================================================
+# SIDEBAR — FUN FOR KIDS
+# ============================================================
+with st.sidebar:
+    st.subheader("🎨 Chatbot Style")
+    st.caption("Choose your bot's personality!")
+    vibe = st.radio(
+        "Pick a vibe:",
+        ["😎 Chill", "🤓 Nerdy Smart", "🎉 Super Fun"],
+        horizontal=True
     )
 
-# ============================================================
-# CATEGORY HANDLERS
-# ============================================================
+    st.write("")
+    st.markdown("**📚 Trained Docs:**")
+    approved_files = os.listdir(APPROVED_DIR)
+    if approved_files:
+        for f in approved_files:
+            st.markdown(f"- 📄 *{f}*")
+    else:
+        st.caption("No files ingested yet.")
 
-def handle_course_detail(question, ident):
-    docs = smart_retrieve(f"full details {ident} description units prereqs format", k=10)
-    if not docs:
-        sug = closest_matches(ident)
-        if sug:
-            return f"🤔 I couldn't find **{ident}**. Did you mean: {', '.join(sug)}?"
-        return fallback_no_results(question)
-
-    style = "Give a fun intro + bullet points."
-    return answer_with_context(question, docs, style)
-
-
-def handle_compare(question, id1, id2):
-    d1 = smart_retrieve(id1, k=6)
-    d2 = smart_retrieve(id2, k=6)
-
-    missing = []
-    if not d1: missing.append(id1)
-    if not d2: missing.append(id2)
-
-    if missing:
-        msg = f"🤔 I couldn't find: {', '.join(missing)}.\n"
-        for m in missing:
-            sug = closest_matches(m)
-            if sug:
-                msg += f"Maybe you meant: {', '.join(sug)}\n"
-        return msg
-
-    left = answer_with_context(f"summary {id1}", d1, "Use bullets.")
-    right = answer_with_context(f"summary {id2}", d2, "Use bullets.")
-
-    return f"""
-📘 **{id1}**  
-{left}
-
-📗 **{id2}**  
-{right}
-"""
-
-
-def handle_category_list(word, prefix):
-    matches = [i for i in IDENTIFIERS if i.startswith(prefix + " ")]
-
-    if not matches:
-        return fallback_no_results(word)
-
-    out = f"🎓 Here are the {word.title()} items:\n\n"
-    for ident in sorted(matches):
-        snippet_docs = smart_retrieve(ident, k=1)
-        snippet = snippet_docs[0].page_content[:150].replace("\n", " ") + "..." if snippet_docs else ""
-        out += f"• **{ident}** — {snippet}\n\n"
-    return out
-
-
-def handle_hybrid_format(q):
-    docs = smart_retrieve("hybrid online in person format", k=10)
-    if not docs: return fallback_no_results(q)
-    return answer_with_context(q, docs, "Explain hybrid format in bullets.")
-
-
-def handle_schedule_info(q):
-    docs = smart_retrieve("schedule calendar timeline weeks", k=10)
-    if not docs: return fallback_no_results(q)
-    return answer_with_context(q, docs, "Use bullets for dates/times.")
-
-
-def handle_program_info(q):
-    docs = smart_retrieve("program overview description degree info", k=10)
-    if not docs: return fallback_no_results(q)
-    return answer_with_context(q, docs, "Short intro + bullet points.")
-
-
-def handle_admissions(q):
-    docs = smart_retrieve("admission apply deadline eligibility steps", k=10)
-    if not docs: return fallback_no_results(q)
-    return answer_with_context(q, docs, "Intro + bullets.")
-
-
-def handle_tuition(q):
-    docs = smart_retrieve("tuition cost fees scholarship", k=10)
-    if not docs: return fallback_no_results(q)
-    return answer_with_context(q, docs, "Use intro + bullets.")
-
-
-def handle_requirements(q):
-    docs = smart_retrieve("requirements prereq credits", k=10)
-    if not docs: return fallback_no_results(q)
-    return answer_with_context(q, docs, "Use bullets.")
-
-
-def handle_general(q):
-    docs = smart_retrieve(q, k=DEFAULT_K)
-    if not docs:
-        return fallback_no_results(q)
-    return answer_with_context(q, docs, "Use bullets + fun intro.")
 
 # ============================================================
-# ROUTER
+# MAIN CHAT INTERFACE
 # ============================================================
+st.markdown("## 💬 Ask Your Question!")
 
-def answer_question(question: str) -> str:
-    q = question.strip()
+user_input = st.text_input(
+    "Ask me anything about your school, classes, electives, or uploaded PDFs:",
+    placeholder="e.g., Compare FIN 8610 and FIN 8510 📘",
+)
 
-    cat_word, pref = detect_category_request(q)
-    if cat_word and pref:
-        return handle_category_list(cat_word, pref)
+# Give the textbox a little bounce animation
+st.markdown(
+    """
+    <style>
+    input[type=text] {
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% {box-shadow: 0 0 0px rgba(0,0,0,0.3);}
+        50% {box-shadow: 0 0 8px rgba(0,0,0,0.3);}
+        100% {box-shadow: 0 0 0px rgba(0,0,0,0.3);}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-    cat = detect_question_category(q)
+if user_input:
+    with st.spinner("Thinking… 🤔💭"):
+        response = answer_question(user_input)
+    st.markdown("### 🧠 Answer:")
+    st.success(response)
 
-    if cat == "course_compare":
-        ids = extract_two_ids_for_compare(q)
-        if len(ids) == 2:
-            return handle_compare(q, ids[0], ids[1])
-        return fallback_no_results(q)
-
-    if cat == "course_detail":
-        for ident in IDENTIFIERS:
-            if ident in q.upper():
-                return handle_course_detail(q, ident)
-        return fallback_no_results(q)
-
-    if cat == "hybrid_format": return handle_hybrid_format(q)
-    if cat == "schedule_info": return handle_schedule_info(q)
-    if cat == "program_info": return handle_program_info(q)
-    if cat == "admissions": return handle_admissions(q)
-    if cat == "tuition": return handle_tuition(q)
-    if cat == "requirements": return handle_requirements(q)
-
-    return handle_general(q)
-
-# ============================================================
-# STREAMLIT UI
-# ============================================================
-
-st.markdown("### 💬 Ask me anything you want:")
-
-alive_placeholders = [
-    "Whatcha wanna know? 😄",
-    "Ask me something from the PDF! 📚✨",
-    "Type a question… I’m listening 👂🤖",
-    "Let’s explore together! 🚀",
-    "Got a course code? Throw it here 😎",
-    "Ask about rules, schedules, or anything inside 🔎",
-    "Teach me something cool by uploading a PDF! 🦖📄",
-]
-
-placeholder_text = random.choice(alive_placeholders)
-
-user_q = st.text_input("", placeholder=placeholder_text, key="kid_input")
-
-if user_q:
-    st.toast("🤖 Thinking…", icon="🧠")
-    answer = answer_question(user_q)
-
-    st.markdown("---")
-    st.subheader("📘 Your Answer:")
-    st.info(answer)
-
-    ans_lower = answer.lower() if answer else ""
-    if answer and ("couldn't find" not in ans_lower) and ("haven’t learned" not in ans_lower) and ("upload a pdf" not in ans_lower):
-        st.balloons()
