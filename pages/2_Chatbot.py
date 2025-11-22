@@ -48,6 +48,17 @@ from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 
+# ============================================================
+# LOAD OPENAI API KEY SAFELY
+# ============================================================
+
+if "OPENAI_API_KEY" not in st.secrets:
+    st.error("❌ OpenAI API key missing. Ask your admin to add it in Streamlit Secrets.")
+    st.stop()
+
+import os
+os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+
 
 # ============================================================
 # CONFIG
